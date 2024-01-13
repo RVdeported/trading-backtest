@@ -1,0 +1,13 @@
+Exchange:
+  market_comm : 0.001
+  taker_comm :  0.001
+  latency :     20    # ms!
+
+Dataset:
+  ts_name:      "o_ts_exch"
+  dep_name:     "o_[SIDE]_[QT-PX]_[NUM]"
+  ts_format:    "%Y-%m-%d %H:%M:%S.%f"
+  start_ts:     1704933225594000000
+
+OMC:
+  lvl:          10
