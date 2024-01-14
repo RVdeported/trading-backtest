@@ -63,9 +63,6 @@ class CSV_OB:
         return self.upded
         
         
-
-        
-
 class MDC_csv:
     def __init__(self, folder_path:str, config:dict):   
         self.dfs:CSV_OB = []
@@ -105,79 +102,5 @@ class MDC_csv:
     def get_line(self, instr:str, lvls=2):
         return self.dfs[self.names[instr]].get_line(lvls)
     
-@dataclass
-class Order:
-    px      :float
-    qt      :float
-    side_ask:bool
-    name    :str
-    ts      :int
-    id      :int
-    FoK     :bool = False    # or partial fill or kill
-
-@dataclass
-class MatchRes:
-    amnt    :float
-    qt      :float
-    order   :Order
-    partial :bool
-
-class OMC:
-    def __init__(self, config:dict, mdc:MDC_csv, names:dict):
-        self.orders    = []
-        self.mdc       = mdc
-        self.names_idx = names
-        self.lvl       = config["lvl"]
-
-    def input_order(self, order:Order):
-        self.orders.append(order)
-
-
-    def match_orders(self, curr_ts:int):
-        res       = []
-        to_remove = []
-        for j, order in enumerate(self.orders):
-            if order.ts > curr_ts:
-                continue
-            row  = self.mdc.get_line(order.name, self.lvl)
-            qt   = order.qt
-            amnt = 0.0
-            i = 0
-            if order.side_ask:
-                while qt > 0:
-                    if row.bids_px[i] < order.px:
-                        break
-                    loc_qt = min(qt, row.bids_qt[i]) 
-                    amnt += loc_qt * row.bids_px[i]
-                    qt   -= loc_qt
-                    i += 1
-                    if i == self.lvl: break
-            else:
-                while qt > 0:
-                    if row.asks_px[i] > order.px:
-                        break
-                    loc_qt = min(qt, row.asks_qt[i]) 
-                    amnt += loc_qt * row.asks_px[i]
-                    qt   -= loc_qt
-                    i += 1
-                    if i == self.lvl: break
-            traded_qt = order.qt - qt
-            order.qt  = qt
-            if i != 0:
-                if order.qt == 0.0: 
-                    to_remove.append(j)
-                res.append(MatchRes(amnt, traded_qt, order, qt != 0.0))
-            if order.FoK:
-                res.append(MatchRes(0.0, 0.0, order, True))
-                to_remove.append(j)
-            
-        
-        to_remove.reverse()
-        for i in to_remove:
-            del(self.orders[i])
-
-        return res
-
 
     
-
