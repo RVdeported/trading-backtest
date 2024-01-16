@@ -7,14 +7,15 @@ Dataset:
   ts_name:      "o_ts_exch"
   dep_name:     "o_[SIDE]_[QT-PX]_[NUM]"
   ts_format:    "%Y-%m-%d %H:%M:%S.%f"
-  start_ts:     1705079156866000000
+  start_ts:     1705079156866000000                
 
 OMC:
   lvl:          10
-  latency :     20    # ms!
-  comm      :   0.0005
+  latency     : 20    # ms!
+  maker_comm :  0.0002
+  taker_comm :  0.0005
+  ts_step_ms:   100
 
 
 Assumptions:
-  ts_step_ms:   1000
-  eval_every:   10
+  eval_every:   100

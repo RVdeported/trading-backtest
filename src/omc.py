@@ -11,8 +11,8 @@ class Order:
     name    :str
     ts      :int
     id      :int
+    strat_id:int 
     FoK     :bool = False    # or partial fill or kill
-    strat_id:int  = 0
     exec_time:int = -1  
 
 class ExecStatus(Enum):
@@ -40,14 +40,16 @@ class OMC:
         self.names_idx = names
         self.lvl       = config["lvl"]
         self.lat       = config["latency"] * 1_000_000
-        self.comm      = config["comm"]
+        self.m_comm    = config["maker_comm"]
+        self.t_comm    = config["taker_comm"]
+        self.eps_ts    = config["ts_step_ms"]
 
     def compose_order(self, px, qt, 
                       side_ask, name, id=0, 
                       FoK = False, strat_id = 0,
                       exec_time = -1):
         self.input_order(Order(
-            px, qt, side_ask, name, self.mdc.ts + self.lat, id, FoK, strat_id, exec_time
+            px, qt, side_ask, name, self.mdc.ts + self.lat, id, strat_id, FoK, exec_time
         ))
 
     def input_order(self, order:Order):
@@ -67,6 +69,7 @@ class OMC:
                 continue
             row  = self.mdc.get_line(order.name, self.lvl)
             qt   = order.qt
+            comm_r = self.t_comm if order.ts - curr_ts < self.eps_ts else self.m_comm
             amnt = 0.0
             comm = 0.0
             i = 0
@@ -76,7 +79,7 @@ class OMC:
                         break
                     loc_qt = np.min([qt, row.bids_qt[i]]) 
                     amnt += loc_qt * row.bids_px[i]
-                    comm += amnt * self.comm
+                    comm += amnt * comm_r
                     qt   -= loc_qt
                     i += 1
                     if i == self.lvl: break
@@ -86,7 +89,7 @@ class OMC:
                         break
                     loc_qt = np.min([qt, row.asks_qt[i]]) 
                     amnt += loc_qt * row.asks_px[i]
-                    comm += amnt * self.comm
+                    comm += amnt * comm_r
                     qt   -= loc_qt
                     i += 1
                     if i == self.lvl: break
@@ -111,6 +114,7 @@ class OMC:
 
         return res
 
-
+    def get_orders(self, strat_id):
+        return [n for n in self.orders if n.strat_id == strat_id]
     
 

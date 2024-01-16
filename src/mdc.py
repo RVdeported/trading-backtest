@@ -27,7 +27,8 @@ class CSV_OB:
 
         self.df[self.n_ts] = pd.to_datetime(self.df[self.n_ts], format = config["ts_format"]).astype('int64')
         self.df.sort_values(self.n_ts, ascending=True, inplace=True, ignore_index=True)
-        self.i = 1
+        self.i     = 1
+        self.old_i = 0
         self.ts = config["start_ts"]
         self.finished = False
         self.finished = not self.actuate()
@@ -59,7 +60,9 @@ class CSV_OB:
         self.ts += dt_ms*1_000_000
         old_i = self.i
         self.finished = not self.actuate()
-        self.upded = old_i != self.i 
+        self.upded = old_i != self.i
+        if self.upded: 
+            self.old_i = old_i 
         return self.upded
         
         
@@ -81,6 +84,8 @@ class MDC_csv:
         self.ts += dt_ms * 1_000_000
         upded = 0
         for ob in self.dfs:
+            if ob.finished:
+                return -1
             upded += int(ob.move(dt_ms))
         return upded
     
@@ -101,6 +106,39 @@ class MDC_csv:
     
     def get_line(self, instr:str, lvls=2):
         return self.dfs[self.names[instr]].get_line(lvls)
+    
+    def get_vwap(self, instr:str, lvls=5):
+        line = self.get_line(instr, lvls)
+        qty_a = np.sum(line.asks_qt)
+        qty_b = np.sum(line.bids_qt)
+        qty   = np.min([qty_a, qty_b])
+
+        qty_a = qty
+        amnt  = 0.0
+        lvl = 0
+        while True:
+            qt = np.min([line.asks_qt[lvl], qty_a])
+            amnt += line.asks_px[lvl] * qt
+            qty_a -= qt
+            lvl += 1
+
+            if qty_a <= 0.0 or lvl == lvls:
+                break
+        
+        qty_a = qty
+        lvl = 0
+        while True:
+            qt = np.min([line.bids_qt[lvl], qty_a])
+            amnt += line.bids_px[lvl] * qt
+            qty_a -= qt
+            lvl += 1
+
+            if qty_a <= 0.0 or lvl == lvls:
+                break
+
+        return amnt / (qty * 2)
+
+        
     
 
     

@@ -4,6 +4,7 @@ from src.omc import MatchRes, OMC, Order
 from src.mdc import MDC_csv
 from dataclasses import dataclass
 import numpy as np
+from uuid import uuid4
 
 @dataclass
 class StratRes:
@@ -57,7 +58,7 @@ class StratStat:
             line = mdc.get_line(instr=instr, lvls=1)
             val += (line.asks_px[0] + line.bids_px[0]) * 0.5 * self.qt[instr]
         self.profit.append(val)
-        self.base.append(np.min(self.balance))
+        self.base.append(-1 * np.min(self.balance))
         self.ts.append(mdc.ts)
 
     def eval(self, risk_free_rate = 0.01):
@@ -72,7 +73,7 @@ class StratStat:
                         exp_ret / sigm, self.bal_dyn, self.ts)
     
 
-
+    
 
     
 
@@ -89,6 +90,17 @@ class Strategy:
 
     def CraeteOrder(self):
         pass
+
+    def clear_inv(self, mdc:MDC_csv, omc:OMC, stats:StratStat):
+        for instr in stats.qt.keys():
+            if abs(stats.qt[instr]) < 1e-5:
+                continue
+            print(f"Clearing {self.id} {instr} {stats.qt[instr]}")
+            if stats.qt[instr] > 0:
+                omc.compose_order(0.000001,  stats.qt[instr], True,  instr, uuid4().int ,strat_id=self.id)
+            else:
+                omc.compose_order(9999999.9, -stats.qt[instr], False, instr, uuid4().int, strat_id=self.id)
+
 
 class BaseStrat(Strategy):
     def __init__(self, chance_of_trade=0.1, spread = 0.005):

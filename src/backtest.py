@@ -29,9 +29,11 @@ class Backtest:
             n.id = i
 
     def step(self):
-        ts = self.c["Assumptions"]["ts_step_ms"]
-        self.mdc.update(ts)
-        self.ts += ts * 1_000_000
+        ts_step_ms = self.c["OMC"]["ts_step_ms"]
+        if self.mdc.update(ts_step_ms) == -1:
+            print("One or more instruments inactive, stopping...")
+            return False
+        self.ts += ts_step_ms * 1_000_000
         matched = self.omc.match_orders(self.ts)
         for res in matched:
             self.strats[res.order.strat_id].OnTrade(res, self.mdc, self.omc)
@@ -43,6 +45,8 @@ class Backtest:
             for stat in self.strat_stats:
                 stat.add_val_point(self.mdc)
         self.iter += 1
+
+        return True
 
 
 
