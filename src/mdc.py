@@ -16,7 +16,7 @@ class Row:
 
 class CSV_OB:
     def __init__(self, ds_path, config:dict, label = "NoLabel"):
-        self.df     = pd.read_csv(ds_path)
+        self.df     = pd.read_csv(ds_path).iloc[:, :60]
         self.n_ts   = config["ts_name"]
         self.n_qt_a = config["dep_name"].replace("[SIDE]", "ask").replace("[QT-PX]", "qt")
         self.n_qt_b = config["dep_name"].replace("[SIDE]", "bid").replace("[QT-PX]", "qt")

@@ -58,19 +58,21 @@ class StratStat:
             line = mdc.get_line(instr=instr, lvls=1)
             val += (line.asks_px[0] + line.bids_px[0]) * 0.5 * self.qt[instr]
         self.profit.append(val)
-        self.base.append(-1 * np.min(self.balance))
+        self.base.append(self.balance)
         self.ts.append(mdc.ts)
 
     def eval(self, risk_free_rate = 0.01):
         if len(self.bal_dyn) == 0:
             return StratRes(0.0,0.0,{},0.0,0.0,0.0,[],[])
-        exp_ret = np.mean(self.profit) / self.profit[-1] - risk_free_rate
-        sigm    = np.std(np.array(self.profit) - risk_free_rate)
+        exp_ret = np.array(self.profit) / np.max([-np.min(self.base), 100]) - risk_free_rate
+        # exp_ret = np.mean(self.profit) / self.profit[-1] - risk_free_rate
+        sigm    = np.std(exp_ret)
+        sharpe = np.mean(exp_ret) / sigm
 
         return StratRes(self.profit[-1], 
-                        self.profit[-1] / np.max([np.abs(self.base[-1]), 100]), 
+                        self.profit[-1] / np.max([-np.min(self.base), 100]), 
                         self.qt, self.balance, self.comm, 
-                        exp_ret / sigm, self.bal_dyn, self.ts)
+                        sharpe, self.bal_dyn, self.ts)
     
 
     

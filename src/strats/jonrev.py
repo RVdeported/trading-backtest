@@ -16,6 +16,7 @@ class Deal:
     enter_status: ExecStatus = ExecStatus.QUEUED
     exit_status : ExecStatus = ExecStatus.QUEUED
     closed_ts   :int         = 0
+    curr_qt     :float       = 0.0
      
 
 @dataclass
@@ -39,16 +40,21 @@ class JonRev(Strategy):
                  trade_amnt   = 100,
                  spread       = 0.005,
                  active_step  = 60,
-                 clear_every_step = 100):
+                 clear_every_step = 100,
+                 max_trend_allowed = -1  # negative if no restrictions
+                 ):
         super().__init__()
         self.z = z
         self.w_size      = w_size
         self.recal_s     = recal_steps
         self.o_due       = int(order_due_ms * 1_000_000)
+        self.enter_due   = 1_000_000
         self.cooldown    = cooldown_ms * 1_000_000
         self.spread      = spread
         self.active_step = active_step
         self.clear_every = clear_every_step
+        self.max_t       = max_trend_allowed
+        self.last_deal   = 0
 
         self.md_buffer         = {}
         self.active_deals      = []
@@ -77,6 +83,16 @@ class JonRev(Strategy):
                     deal.closed_ts   = mdc.ts
                     self.done_deals.append(deal)
                     self.active_deals.pop(i)
+
+                    if deal.curr_qt > 1e-5:
+                        px = 0.00001 if not res.order.side_ask else 99999999.9
+                        closing_id = uuid4().int
+                        omc.compose_order(px, deal.curr_qt, not res.order.side_ask,
+                                        res.order.name, closing_id, strat_id=self.id)
+                        self.closing_ids.append(closing_id) 
+
+                elif (res.status == ExecStatus.PARTFILL):
+                    deal.curr_qt += res.qt
                 break
             elif deal.id_exit == res.order.id:
                 deal.exit_status = res.status
@@ -90,11 +106,14 @@ class JonRev(Strategy):
                     omc.compose_order(px, res.order.qt, res.order.side_ask,
                                       res.order.name, closing_id, strat_id=self.id)
                     self.closing_ids.append(closing_id) 
-                    
+                
+                elif res.status == ExecStatus.PARTFILL:
+                    break
                 deal.closed_ts = mdc.ts
                 self.done_deals.append(deal)
                 self.active_deals.pop(i)
                 break
+        
 
     def OnObUpdate(self, mdc: MDC_csv, omc: OMC, strat_stats: StratStat):
         self.step_glob += 1
@@ -124,8 +143,9 @@ class JonRev(Strategy):
         if (len(self.active_deals) == 0) and (len(omc.get_orders(self.id)) == 0):
             self.clear_inv(mdc, omc, strat_stats)
 
-        for pair in self.pairs:
-            self.make_orders(pair, mdc, omc)
+        if mdc.ts - self.last_deal > self.cooldown:
+            for pair in self.pairs:
+                self.make_orders(pair, mdc, omc)
 
     def make_orders(self, pair:Pair, mdc: MDC_csv, omc: OMC):
         if mdc.ts - pair.last_trade < self.cooldown: 
@@ -147,39 +167,38 @@ class JonRev(Strategy):
 
         z = (val - pair.mean) / pair.std
         if abs(z) > self.z: 
+            self.last_deal = mdc.ts
             deal1    = Deal(uuid4().int, uuid4().int, pair.name1, mdc.ts)
             deal2    = Deal(uuid4().int, uuid4().int, pair.name2, mdc.ts)
-            if pair.std > pair.mean:
-                print("STD HIGHER THAN MEAN")
-                return
+
             # coef = pair.std * abs(z) / pair.mean * 0.8
             coef = self.spread
             if z > 0:
-                sell_px1 = line1.bids_px[0] * 1.0002
-                sell_px2 = line2.bids_px[0] * 1.0002
+                sell_px1 = line1.bids_px[1]
+                sell_px2 = line2.bids_px[1]
                 buy_px1  = sell_px1         * (1 - coef)
                 buy_px2  = sell_px2         * (1 - coef)
                 # sell_px1 = 0.00000000001
                 # sell_px2 = 0.00000000001
                 qt1      = self.trade_amnt / max(sell_px1, 0.0001)
                 qt2      = self.trade_amnt / max(sell_px2, 0.0001)
-                omc.compose_order(buy_px1, qt1, False, pair.name1, deal1.id_exit,    strat_id=self.id, exec_time=self.o_due)
-                omc.compose_order(buy_px2, qt2, False, pair.name2, deal2.id_exit,    strat_id=self.id, exec_time=self.o_due)
-                omc.compose_order(sell_px1, qt1, True, pair.name1, deal1.id_enter, FoK=True, strat_id=self.id)
-                omc.compose_order(sell_px2, qt2, True, pair.name2, deal2.id_enter, FoK=True, strat_id=self.id)
+                omc.compose_order(buy_px1, qt1, False, pair.name1, deal1.id_exit,  strat_id=self.id, exec_time=self.o_due)
+                omc.compose_order(buy_px2, qt2, False, pair.name2, deal2.id_exit,  strat_id=self.id, exec_time=self.o_due)
+                omc.compose_order(sell_px1, qt1, True, pair.name1, deal1.id_enter, strat_id=self.id, exec_time=self.enter_due)
+                omc.compose_order(sell_px2, qt2, True, pair.name2, deal2.id_enter, strat_id=self.id, exec_time=self.enter_due)
             else:
                 # buy_px1  = 99999999999999.9
-                buy_px1  = line1.asks_px[0] * 0.9998
+                buy_px1  = line1.asks_px[1]
                 # buy_px2  = 99999999999999.9 
-                buy_px2  = line2.asks_px[0] * 0.9998
+                buy_px2  = line2.asks_px[1]
                 sell_px1 = buy_px1 * (1 + coef)
                 sell_px2 = buy_px2 * (1 + coef)
                 qt1      = self.trade_amnt / max(buy_px1, 0.0001)
                 qt2      = self.trade_amnt / max(buy_px2, 0.0001)
-                omc.compose_order(buy_px1, qt1, False, pair.name1, deal1.id_enter, FoK=True, strat_id=self.id)
-                omc.compose_order(buy_px2, qt2, False, pair.name2, deal2.id_enter, FoK=True, strat_id=self.id)
-                omc.compose_order(sell_px1, qt1, True, pair.name1, deal1.id_exit,            strat_id=self.id, exec_time=self.o_due)
-                omc.compose_order(sell_px2, qt2, True, pair.name2, deal2.id_exit,            strat_id=self.id, exec_time=self.o_due)
+                omc.compose_order(buy_px1, qt1, False, pair.name1, deal1.id_enter, strat_id=self.id, exec_time=self.enter_due)
+                omc.compose_order(buy_px2, qt2, False, pair.name2, deal2.id_enter, strat_id=self.id, exec_time=self.enter_due)
+                omc.compose_order(sell_px1, qt1, True, pair.name1, deal1.id_exit,  strat_id=self.id, exec_time=self.o_due)
+                omc.compose_order(sell_px2, qt2, True, pair.name2, deal2.id_exit,  strat_id=self.id, exec_time=self.o_due)
 
             self.active_deals.append(deal1) 
             self.active_deals.append(deal2)
@@ -205,6 +224,14 @@ class JonRev(Strategy):
                         continue
                     if np.abs(mustd["std"] / mustd["mean"]) < self.spread / self.z:
                         continue
+                    if self.max_t > 0:
+                        trend = np.abs(np.mean(np.diff(ds.T),1) / ds[0])
+                        if trend[0] > self.max_t or trend[1] > self.max_t:
+                            print("{} Refusing because of trend {} with instr {}|{}".format(
+                                self.id, trend, instr[i], instr[j]
+                            ))
+                            continue
+
                     assert instr[i] != instr[j]
                     self.pairs.append(Pair(instr[i], instr[j], **mustd))
                     if len(self.pairs) >= self.num_pairs:
@@ -218,7 +245,7 @@ class JonRev(Strategy):
 
     @staticmethod
     def check_intgr(arrs:np.array):
-        res = coint_johansen(arrs, det_order=0, k_ar_diff=2)
+        res = coint_johansen(arrs, det_order=1, k_ar_diff=1)
         return res.trace_stat[-1] > res.trace_stat_crit_vals[-1, -1]
     
     @staticmethod

@@ -8,13 +8,12 @@ Dataset:
   dep_name:     "o_[SIDE]_[QT-PX]_[NUM]"
   ts_format:    "%Y-%m-%d %H:%M:%S.%f"
   start_ts:     1705079156866000000                
-
 OMC:
   lvl:          10
   latency     : 20    # ms!
   maker_comm :  0.0002
   taker_comm :  0.0005
-  ts_step_ms:   100
+  ts_step_ms:   200
 
 
 Assumptions:
