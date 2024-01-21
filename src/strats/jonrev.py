@@ -6,6 +6,7 @@ from src.strategy import Strategy, MDC_csv, OMC, dataclass
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
 import numpy as np
 from uuid import uuid4
+from src.strategy import wandb
 
 @dataclass
 class Deal:
@@ -41,33 +42,45 @@ class JonRev(Strategy):
                  spread       = 0.005,
                  active_step  = 60,
                  clear_every_step = 100,
-                 max_trend_allowed = -1  # negative if no restrictions
+                 max_trend_allowed = -1,  # negative if no restrictions
+                 enter_due_ms = 120_000
                  ):
         super().__init__()
         self.z = z
         self.w_size      = w_size
         self.recal_s     = recal_steps
         self.o_due       = int(order_due_ms * 1_000_000)
-        self.enter_due   = 1_000_000
+        self.enter_due   = enter_due_ms * 1_000_000
         self.cooldown    = cooldown_ms * 1_000_000
         self.spread      = spread
         self.active_step = active_step
         self.clear_every = clear_every_step
         self.max_t       = max_trend_allowed
+        self.num_pairs         = num_pairs
+        self.trade_amnt        = trade_amnt * 0.5
+        self.c = {
+            "w_size" : w_size,
+            "o_due"  : order_due_ms,
+            "cooldown_ms"  : 2000,
+            "trade_amnt"  : trade_amnt,
+            "max_trend_allowed"  : max_trend_allowed,
+            "spread"     : spread,
+            "active_step" : active_step,
+            "order_due_ms" : order_due_ms,
+            "enter_due_ms" : enter_due_ms,
+        }
+        
         self.last_deal   = 0
 
         self.md_buffer         = {}
         self.active_deals      = []
         self.need_to_calibrate = True
         self.step_c            = 0
-        self.step_glob         = -1
-        self.trade_amnt        = trade_amnt * 0.5
-        
-        self.num_pairs         = num_pairs
+        self.step_glob         = -1        
         self.pairs             = []
-
         self.done_deals        = []
         self.closing_ids       = []
+
 
 
 
@@ -225,7 +238,7 @@ class JonRev(Strategy):
                     if np.abs(mustd["std"] / mustd["mean"]) < self.spread / self.z:
                         continue
                     if self.max_t > 0:
-                        trend = np.abs(np.mean(np.diff(ds.T),1) / ds[0])
+                        trend = np.abs(np.mean(np.diff(ds.T),1) / np.std(ds.T, axis=1))
                         if trend[0] > self.max_t or trend[1] > self.max_t:
                             print("{} Refusing because of trend {} with instr {}|{}".format(
                                 self.id, trend, instr[i], instr[j]

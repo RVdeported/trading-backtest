@@ -5,6 +5,7 @@ from src.mdc import MDC_csv
 from src.omc import OMC, MatchRes
 from src.strategy import Strategy, StratStat
 from dataclasses import dataclass
+import wandb
 
 def read_yaml(path):
     with open(path, "r") as stream:
@@ -15,7 +16,7 @@ def read_yaml(path):
 
 
 class Backtest:
-    def __init__(self, config_path, data_folder, strategies:list[Strategy]):
+    def __init__(self, config_path, data_folder, strategies:list[Strategy], wandb_project = None):
         self.c      = read_yaml(config_path)
         self.mdc    = MDC_csv(data_folder, self.c)
         self.strats = strategies # strategies 
@@ -24,9 +25,14 @@ class Backtest:
         self.ts     = self.mdc.ts
         self.strat_stats = [StratStat(i) for i in range(len(self.strats))]
         self.iter   = 1
+        self.run = None 
+        if wandb_project is not None:
+            self.run = wandb.init(wandb_project, config = self.c)
 
         for i, n in enumerate(self.strats):
             n.id = i
+            self.run.config[f"config_{i+1}"] = n.c
+            n.run = self.run
 
     def step(self):
         ts_step_ms = self.c["OMC"]["ts_step_ms"]
@@ -42,8 +48,8 @@ class Backtest:
         for i, strat in enumerate(self.strats):
             strat.OnObUpdate(self.mdc, self.omc, self.strat_stats[i])
         if self.iter % self.c["Assumptions"]["eval_every"] == 0:
-            for stat in self.strat_stats:
-                stat.add_val_point(self.mdc)
+            for i, stat in enumerate(self.strat_stats):
+                stat.add_val_point(self.mdc, self.run)
         self.iter += 1
 
         return True

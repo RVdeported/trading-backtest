@@ -4,3 +4,5 @@ __pycache__
 data_1/
 test*
 data_2/
+data*
+wandb

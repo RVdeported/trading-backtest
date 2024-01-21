@@ -2,9 +2,10 @@ from .mdc import MDC_csv
 from .omc import OMC
 from src.omc import MatchRes, OMC, Order
 from src.mdc import MDC_csv
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import numpy as np
 from uuid import uuid4
+import wandb
 
 @dataclass
 class StratRes:
@@ -52,7 +53,7 @@ class StratStat:
         self.bal_dyn.append(self.balance)
         self.matchRes.append(trade_res)
 
-    def add_val_point(self, mdc):
+    def add_val_point(self, mdc, wandb_run = None):
         val = self.balance
         for instr in self.qt.keys():
             line = mdc.get_line(instr=instr, lvls=1)
@@ -60,6 +61,16 @@ class StratStat:
         self.profit.append(val)
         self.base.append(self.balance)
         self.ts.append(mdc.ts)
+
+        if wandb_run is not None:
+            eval_res = asdict(self.eval(0.0))
+            point = {}
+            for k, v in eval_res.items():
+                point[f"Strat_{self.strat_id+1}/{k}"] = v
+
+            wandb_run.log(point)
+
+
 
     def eval(self, risk_free_rate = 0.01):
         if len(self.bal_dyn) == 0:
@@ -70,7 +81,7 @@ class StratStat:
         sharpe = np.mean(exp_ret) / sigm
 
         return StratRes(self.profit[-1], 
-                        self.profit[-1] / np.max([-np.min(self.base), 100]), 
+                        self.profit[-1] / np.max([-np.min(self.base), 20000]), 
                         self.qt, self.balance, self.comm, 
                         sharpe, self.bal_dyn, self.ts)
     
@@ -80,7 +91,9 @@ class StratStat:
     
 
 class Strategy:
-    id = 0
+    id  = 0
+    run = None
+    c   = {}
     def __init__(self):
         pass
 
