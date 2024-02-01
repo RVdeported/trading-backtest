@@ -23,7 +23,7 @@ class Backtest:
         self.omc    = OMC(self.c["OMC"], self.mdc, self.mdc.names)
 
         self.ts     = self.mdc.ts
-        self.strat_stats = [StratStat(i) for i in range(len(self.strats))]
+        self.strat_stats = []
         self.iter   = 1
         self.run = None 
         if wandb_project is not None:
@@ -31,8 +31,10 @@ class Backtest:
 
         for i, n in enumerate(self.strats):
             n.id = i
+            self.strat_stats.append(StratStat(n))
             self.run.config[f"config_{i+1}"] = n.c
             n.run = self.run
+            n.OnInit(self.mdc, self.omc, self.strat_stats[i])
 
     def step(self):
         ts_step_ms = self.c["OMC"]["ts_step_ms"]

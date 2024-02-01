@@ -21,7 +21,7 @@ class StratRes:
 
         
 class StratStat:
-    def __init__(self, id):
+    def __init__(self, strat):
         self.trade_c  = 0
         self.invested = 0.0
         self.balance  = 0.0
@@ -34,7 +34,8 @@ class StratStat:
         self.matchRes = []
         self.profit   = []
         self.base     = []
-        self.strat_id = id
+        self.strat_id = strat.id
+        self.strat    = strat
 
     def add_res(self, trade_res:MatchRes):
         self.trade_c += 1
@@ -67,7 +68,7 @@ class StratStat:
             point = {}
             for k, v in eval_res.items():
                 point[f"Strat_{self.strat_id+1}/{k}"] = v
-
+            point[f"Strat_{self.strat_id+1}/active_deals"] = len(self.strat.active_deals)
             wandb_run.log(point)
 
 
@@ -106,15 +107,18 @@ class Strategy:
     def CraeteOrder(self):
         pass
 
+    def OnInit(self, mdc:MDC_csv, omc:OMC, strat_stats:StratStat):
+        pass
+
     def clear_inv(self, mdc:MDC_csv, omc:OMC, stats:StratStat):
         for instr in stats.qt.keys():
             if abs(stats.qt[instr]) < 1e-5:
                 continue
             print(f"Clearing {self.id} {instr} {stats.qt[instr]}")
             if stats.qt[instr] > 0:
-                omc.compose_order(0.000001,  stats.qt[instr], True,  instr, uuid4().int ,strat_id=self.id)
+                omc.compose_order(None,  stats.qt[instr], True,  instr, uuid4().int ,strat_id=self.id)
             else:
-                omc.compose_order(9999999.9, -stats.qt[instr], False, instr, uuid4().int, strat_id=self.id)
+                omc.compose_order(None, -stats.qt[instr], False, instr, uuid4().int, strat_id=self.id)
 
 
 class BaseStrat(Strategy):

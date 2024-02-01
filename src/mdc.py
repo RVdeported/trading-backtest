@@ -13,6 +13,15 @@ class Row:
     bids_px:np.array
     name   :str
 
+@dataclass
+class Candle:
+    ts     :int
+    high   :float
+    low    :float
+    start  :float
+    end    :float
+    name   :str
+
 
 class CSV_OB:
     def __init__(self, ds_path, config:dict, label = "NoLabel"):
@@ -27,12 +36,16 @@ class CSV_OB:
 
         self.df[self.n_ts] = pd.to_datetime(self.df[self.n_ts], format = config["ts_format"]).astype('int64')
         self.df.sort_values(self.n_ts, ascending=True, inplace=True, ignore_index=True)
-        self.i     = 1
-        self.old_i = 0
+        self.i      = 1
+        self.old_i  = 0
+        self.next_i = 2
         self.ts = config["start_ts"]
         self.finished = False
         self.finished = not self.actuate()
         self.upded    = False
+
+        self.n_px_a_1   = self.n_px_a.replace("[NUM]", str(1))
+        self.n_px_b_1   = self.n_px_b.replace("[NUM]", str(1))
         
      
     def actuate(self) -> bool:
@@ -54,6 +67,14 @@ class CSV_OB:
 
         return Row(self.df.loc[self.i-1, self.n_ts], a[0], a[1], a[2], a[3], self.name)
     
+    def get_candle(self) -> Candle:
+        rel_ds = self.df.iloc[self.old_i:self.i+1]
+        px_max = np.max((rel_ds[self.n_px_a_1] + rel_ds[self.n_px_b_1]).values / 2)
+        px_min = np.min((rel_ds[self.n_px_a_1] + rel_ds[self.n_px_b_1]).values / 2)
+        start  = (rel_ds.iloc[0][self.n_px_a_1] + rel_ds.iloc[0][self.n_px_b_1]) / 2
+        end    = (rel_ds.iloc[-1][self.n_px_a_1] + rel_ds.iloc[-1][self.n_px_b_1]) / 2
+        return Candle(rel_ds.iloc[0][self.n_ts], px_max, px_min, start, end, self.name)
+    
     def move(self, dt_ms:int) -> bool:
         if self.finished:
             return False
@@ -70,12 +91,15 @@ class MDC_csv:
     def __init__(self, folder_path:str, config:dict):   
         self.dfs:CSV_OB = []
         self.names = {}
+        self.id_names = []
 
         tables = [Path(folder_path, n) for n in os.listdir(folder_path)]
         names  = [n[n.find("_")+1:n.find("_Bi")] for n in os.listdir(folder_path)]
+        self.id_names = names
         for i in range(len(tables)):
             self.dfs.append(CSV_OB(tables[i], config["Dataset"], names[i]))
             self.names[names[i]] = i
+
         
         self.ts    = config["Dataset"]["start_ts"]
         
@@ -104,6 +128,17 @@ class MDC_csv:
                 res.append(ob.get_line(lvls))
         return res
     
+    def get_all_candles(self, only_upded=False):
+        res = []
+        for ob in self.dfs:
+            if (ob.upded and only_upded) or\
+                (not only_upded):
+                res.append(ob.get_candle())
+        return res
+
+    def get_candle(self, instr:str):
+        return self.dfs[self.names[instr]].get_candle()
+
     def get_line(self, instr:str, lvls=2):
         return self.dfs[self.names[instr]].get_line(lvls)
     

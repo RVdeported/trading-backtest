@@ -6,7 +6,6 @@ from src.strategy import Strategy, MDC_csv, OMC, dataclass
 from statsmodels.tsa.vector_ar.vecm import coint_johansen
 import numpy as np
 from uuid import uuid4
-from src.strategy import wandb
 
 @dataclass
 class Deal:
@@ -130,6 +129,8 @@ class JonRev(Strategy):
 
     def OnObUpdate(self, mdc: MDC_csv, omc: OMC, strat_stats: StratStat):
         self.step_glob += 1
+        if (self.step_glob % self.clear_every == 0):
+            self.clear_inv_nonactive(mdc, omc, strat_stats)
         if self.step_glob % self.active_step != 0:
             return
         # if self.step_glob // self.active_step % self.clear_every == 0:
@@ -153,8 +154,10 @@ class JonRev(Strategy):
             self.step_c += 1
             self.need_to_calibrate = self.step_c > self.recal_s
 
-        if (len(self.active_deals) == 0) and (len(omc.get_orders(self.id)) == 0):
-            self.clear_inv(mdc, omc, strat_stats)
+        # if (len(self.active_deals) == 0) and (len(omc.get_orders(self.id)) == 0):
+        #     self.clear_inv(mdc, omc, strat_stats)
+
+        
 
         if mdc.ts - self.last_deal > self.cooldown:
             for pair in self.pairs:
@@ -179,6 +182,7 @@ class JonRev(Strategy):
         val = px1 + px2 * pair.ratio
 
         z = (val - pair.mean) / pair.std
+        # print("Z: {}, pair: {}/{}, VAL: {}", z, pair.name1, pair.name2, )
         if abs(z) > self.z: 
             self.last_deal = mdc.ts
             deal1    = Deal(uuid4().int, uuid4().int, pair.name1, mdc.ts)
@@ -253,9 +257,6 @@ class JonRev(Strategy):
 
         return True
 
-   
-
-
     @staticmethod
     def check_intgr(arrs:np.array):
         res = coint_johansen(arrs, det_order=1, k_ar_diff=1)
@@ -268,3 +269,43 @@ class JonRev(Strategy):
         ratio = arrs[0, 0] / arrs[0, 1]
         portf = np.array([n[0] + n[1] * ratio for n in arrs])
         return {"mean" : np.mean(portf), "std": np.std(portf), "ratio":ratio}
+    
+    def get_active_qt(self, omc:OMC):
+        res = {}
+        orders = omc.get_orders(self.id)
+        for n in self.active_deals:
+            for comb in zip([n.enter_status, n.id_enter], [n.exit_status, n.id_exit]):
+                if (comb[0] == ExecStatus.QUEUED or
+                    comb[0] == ExecStatus.PARTFILL):
+                    if n.instr not in res.keys():
+                        res[n.instr] = 0.0; 
+                    for order in orders:
+                        if order.id == comb[1]:
+                            res[n.instr] += order.qt
+
+        return res
+                    
+
+    def clear_inv_nonactive(self, mdc:MDC_csv, omc:OMC, stats:StratStat):
+        active_qt = self.get_active_qt(omc)
+        balance   = stats.qt
+        line = {n.name:n for n in mdc.get_all_candles()} 
+        for instr in balance.keys():
+            if instr not in active_qt:
+                qt = balance[instr]
+            else:
+                qt = balance[instr] - active_qt[instr]
+
+            if abs(qt) < 1e-5:
+                continue
+            print(f"Clearing {self.id} {instr} {qt}")
+            
+            if qt > 0:
+                omc.compose_order(line[instr].end,  
+                        stats.qt[instr], True,  instr, uuid4().int ,strat_id=self.id, FoK=True)
+            else:
+                omc.compose_order(line[instr].end, 
+                       -stats.qt[instr], False, instr, uuid4().int, strat_id=self.id, FoK=True)
+
+
+        
