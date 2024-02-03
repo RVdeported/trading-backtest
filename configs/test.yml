@@ -14,7 +14,7 @@ OMC:
   latency     : 300    # ms!
   maker_comm :  0.0002
   taker_comm :  0.0005
-  ts_step_ms:   1000
+  ts_step_ms:   5000
   match_mode:   "candle"  # candle or depth
 
 

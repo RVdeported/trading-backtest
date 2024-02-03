@@ -93,8 +93,10 @@ class MDC_csv:
         self.names = {}
         self.id_names = []
 
-        tables = [Path(folder_path, n) for n in os.listdir(folder_path)]
-        names  = [n[n.find("_")+1:n.find("_Bi")] for n in os.listdir(folder_path)]
+        files = os.listdir(folder_path) 
+        files.sort()
+        tables = [Path(folder_path, n) for n in files]
+        names  = [n[n.find("_")+1:n.find("_Bi")] for n in files]
         self.id_names = names
         for i in range(len(tables)):
             self.dfs.append(CSV_OB(tables[i], config["Dataset"], names[i]))

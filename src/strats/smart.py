@@ -35,6 +35,7 @@ class Pair:
 class SMART(Strategy):
     def __init__(self, 
                  vte_path,
+                 with_mu       = True,
                  num_pairs     = 3,
                  k             = 2.0, 
                  order_due_ms  = 15000,
@@ -43,7 +44,8 @@ class SMART(Strategy):
                  spread        = 0.005,
                  active_step   = 60,
                  clear_every_step = 100,
-                 enter_due_ms = 120_000
+                 enter_due_ms = 120_000,
+                 max_pair_ord = 50
                  ):
         
 
@@ -52,8 +54,12 @@ class SMART(Strategy):
         self.vte_i       = 0
         for n in ["ts", "kappa1", "theta1", "resFlag1", "vol1", "ratio1"]:
             assert (n in self.vte.columns)
+        if with_mu:
+            assert ("mu1" in self.vte.columns)
 
-        self.k = k
+        self.max_pair_ord = max_pair_ord
+        self.with_mu     = with_mu
+        self.k           = k
         self.o_due       = int(order_due_ms * 1_000_000)
         self.enter_due   = enter_due_ms * 1_000_000
         self.pair_coold  = pair_colld_ms * 1_000_000
@@ -146,19 +152,23 @@ class SMART(Strategy):
 
         if actuated:
             self.MakeOrders(mdc,omc)
-        
 
-
-
+        if len(self.active_deals) == 0:
+            self.clear_inv(mdc, omc, strat_stats)
 
     def MakeOrders(self, mdc: MDC_csv, omc: OMC):
         vte_row = self.vte.iloc[self.vte_i]
         lines = mdc.get_all_lines(1, False)
         px_prime = (lines[0].asks_px[0] + lines[0].bids_px[0]) * 0.5
+        active_ord = np.zeros(len(self.pairs))
+        for deal in self.active_deals:
+            active_ord[mdc.names[deal.name2] - 1] += 1
         for i, pair in enumerate(self.pairs):
             if self.pair_coold > mdc.ts - pair.trade_ts:
                 continue
             if vte_row[f"resFlag{i+1}"] != 0:
+                continue
+            if active_ord[i] >= self.max_pair_ord:
                 continue
 
             pair.mean  = vte_row[f"theta{i+1}"]

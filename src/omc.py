@@ -138,7 +138,6 @@ class OMC:
                         order.px = row.bids_px[0]
                     if row.bids_px[i] < order.px:
                         break
-                    
                     loc_qt = np.min([qt, row.bids_qt[i]]) 
                     amnt += loc_qt * row.bids_px[i]
                     comm += amnt * comm_r
@@ -147,10 +146,10 @@ class OMC:
                     if i == self.lvl: break
             else:
                 while qt > 0.0:
-                    if row.asks_px[i] > order.px:
-                        break
                     if order.px is None:
                         order.px = row.asks_px[0]
+                    if row.asks_px[i] > order.px:
+                        break
                     loc_qt = np.min([qt, row.asks_qt[i]]) 
                     amnt += loc_qt * row.asks_px[i]
                     comm += amnt * comm_r
